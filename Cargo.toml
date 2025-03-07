@@ -14,7 +14,7 @@ rand = "0.9.0"     # Randomness for proofs
 
 # GPU support (CUDA bindings) or we can use cudarc (researching on that)
 # https://rust-gpu.github.io/Rust-CUDA/guide/getting_started.html
-cust = "0.3.2"
+# cust = "0.3.2"
 cuda_std = "0.2.2" # Basic CUDA integration
 
 # Blockchain basics

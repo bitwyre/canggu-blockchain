@@ -95,12 +95,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bytemuck"
-version = "1.22.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6b1fc10dbac614ebc03540c9dbd60e83887fda27794998c6528f1782047d540"
-
-[[package]]
 name = "byteorder"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -112,7 +106,6 @@ version = "0.1.0"
 dependencies = [
  "bellman",
  "cuda_std",
- "cust",
  "pqcrypto-dilithium",
  "pqcrypto-kyber",
  "rand",
@@ -221,52 +214,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cust"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d6cc71911e179f12483b9734120b45bd00bf64fab085cc4818428523eedd469"
-dependencies = [
- "bitflags 1.3.2",
- "bytemuck",
- "cust_core",
- "cust_derive",
- "cust_raw",
- "find_cuda_helper",
-]
-
-[[package]]
-name = "cust_core"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "039f79662cb8f890cbf335e818cd522d6e3a53fe63f61d1aaaf859cd3d975f06"
-dependencies = [
- "cust_derive",
- "glam",
- "mint",
- "vek",
-]
-
-[[package]]
-name = "cust_derive"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8a3bc95fe629aed92b2423de6ccff9e40174b21d19cb6ee6281a4d04ac72f66"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "cust_raw"
-version = "0.11.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fbf40d6ade12cb9828bbc844b9875c7b93d25e67a3c9bf61c7aa3ae09e402bf8"
-dependencies = [
- "find_cuda_helper",
-]
-
-[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -297,15 +244,6 @@ dependencies = [
  "bitvec",
  "rand_core 0.6.4",
  "subtle",
-]
-
-[[package]]
-name = "find_cuda_helper"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9f9e65c593dd01ac77daad909ea4ad17f0d6d1776193fc8ea766356177abdad"
-dependencies = [
- "glob",
 ]
 
 [[package]]
@@ -345,15 +283,6 @@ dependencies = [
  "libc",
  "wasi 0.13.3+wasi-0.2.2",
  "windows-targets",
-]
-
-[[package]]
-name = "glam"
-version = "0.20.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f43e957e744be03f5801a55472f593d43fabdebf25a4585db250f04d86b1675f"
-dependencies = [
- "num-traits",
 ]
 
 [[package]]
@@ -417,12 +346,6 @@ name = "log"
 version = "0.4.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "30bde2b3dc3671ae49d8e2e9f044c7c005836e7a023ee57cffa25ab82764bb9e"
-
-[[package]]
-name = "mint"
-version = "0.5.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e53debba6bda7a793e5f99b8dacf19e626084f525f7829104ba9898f367d85ff"
 
 [[package]]
 name = "num-integer"
