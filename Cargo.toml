@@ -1,0 +1,22 @@
+[package]
+name = "canggu"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Quantum-resistant crypto (like CRYSTALS-Kyber/Dilithium)
+pqcrypto-kyber = "0.8.1"     # Kyber for key exchange
+pqcrypto-dilithium = "0.5.0" # Dilithium for signatures
+
+# ZK-SNARKs (zero-knowledge proofs)
+bellman = "0.14.0" # For ZK-SNARK circuits
+rand = "0.9.0"     # Randomness for proofs
+
+# GPU support (CUDA bindings) or we can use cudarc (researching on that)
+# https://rust-gpu.github.io/Rust-CUDA/guide/getting_started.html
+cust = "0.3.2"
+cuda_std = "0.2.2" # Basic CUDA integration
+
+# Blockchain basics
+serde = { version = "1.0", features = ["derive"] } # Serialization
+sha2 = "0.10"                                      # Hashing (SHA-256 fallback)
