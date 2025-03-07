@@ -19,6 +19,7 @@ COPY src ./src
 RUN cargo build --release
 
 # Final stage: slim runtime image
+# Using debian for final stage as its a lighter image compared to rust's official image
 FROM debian:bookworm-slim
 
 # Install runtime dependencies
