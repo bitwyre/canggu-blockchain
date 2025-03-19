@@ -18,5 +18,52 @@ rand = "0.9.0"     # Randomness for proofs
 cuda_std = "0.2.2" # Basic CUDA integration
 
 # Blockchain basics
-serde = { version = "1.0", features = ["derive"] } # Serialization
-sha2 = "0.10"                                      # Hashing (SHA-256 fallback)
+serde = { version = "1.0.219", features = ["derive"] } # Serialization
+sha2 = "0.10"                                          # Hashing (SHA-256 fallback)
+
+tokio = { version = "1.28", features = ["full"] }
+async-trait = "0.1.68"
+log = "0.4"
+env_logger = "0.11.7"
+clap = { version = "4.3", features = ["derive"] }
+# Cryptography
+ed25519-dalek = "2.1.1"
+
+# Networking
+libp2p = { version = "0.55.0", features = [
+    # "tcp-tokio", # TODO: Enable this somehow
+    "mdns",
+    "websocket",
+    "noise",
+    # "mplex",
+    "yamux",
+    "gossipsub",
+] }
+
+# Storage
+sled = "0.34"
+
+# eBPF VM
+rbpf = "0.3.0"
+solana_rbpf = "0.8.5"
+
+# Serialization
+bincode = "2.0.1"
+serde_json = "1.0"
+
+# Utilities
+thiserror = "2.0.12"
+anyhow = "1.0"
+chrono = "0.4"
+
+[dev-dependencies]
+tempfile = "3.5"
+assert_cmd = "2.0"
+criterion = "0.5.1"
+
+# [[bench]]
+# name = "consensus_bench"
+# harness = false
+
+# [workspace]
+# members = [".", "examples/basic_contract"]
