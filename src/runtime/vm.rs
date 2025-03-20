@@ -2,9 +2,17 @@ use crate::blockchain::state::BlockchainState;
 use crate::crypto::hash::Hash;
 use crate::runtime::program::ProgramId;
 use anyhow::{Result, anyhow};
-use solana_rbpf::memory_region::MemoryRegion;
-use solana_rbpf::vm::TestContextObject;
-use solana_rbpf::vm::{Config as RbpfConfig, EbpfVm, Executable};
+use solana_rbpf::{
+    aligned_memory::AlignedMemory,
+    assembler::assemble,
+    ebpf,
+    elf::Executable,
+    memory_region::{MemoryMapping, MemoryRegion},
+    program::{BuiltinProgram, FunctionRegistry},
+    static_analysis::Analysis,
+    verifier::RequisiteVerifier,
+    vm::{Config, DynamicAnalysis, EbpfVm, TestContextObject},
+};
 use std::sync::{Arc, RwLock};
 
 /// Results of a program execution
@@ -15,9 +23,8 @@ pub struct ExecutionResult {
 
     /// Gas used during execution
     pub gas_used: u64,
-
-    /// Logs produced during execution
-    pub logs: Vec<String>,
+    // /// Logs produced during execution
+    // pub logs: Vec<String>,
 }
 
 /// eBPF Virtual Machine for executing programs
@@ -26,7 +33,7 @@ pub struct VirtualMachine {
     state: Arc<RwLock<BlockchainState>>,
 
     /// VM configuration
-    config: RbpfConfig,
+    config: Config,
 
     /// Gas limit for execution
     gas_limit: u64,
@@ -36,12 +43,12 @@ impl VirtualMachine {
     /// Create a new virtual machine
     pub fn new(state: Arc<RwLock<BlockchainState>>, gas_limit: u64) -> Self {
         // Configure the VM
-        let config = RbpfConfig {
+        let config = Config {
             max_call_depth: 10,
             stack_frame_size: 4096,
             enable_instruction_meter: true,
             enable_instruction_tracing: false,
-            ..RbpfConfig::default()
+            ..Config::default()
         };
 
         Self {
@@ -55,72 +62,77 @@ impl VirtualMachine {
     pub fn execute(&self, program_id: &ProgramId, input_data: &[u8]) -> Result<ExecutionResult> {
         // Get state for reading
         let state = self.state.read().unwrap();
+        let loader = Arc::new(BuiltinProgram::new_loader(
+            Config {
+                enable_instruction_tracing: false,
+                enable_symbol_and_section_labels: true,
+                ..Config::default()
+            },
+            FunctionRegistry::default(),
+        ));
 
-        // Find the program
         let program_info = state
             .programs
             .get(program_id)
-            .ok_or_else(|| anyhow!("Program not found: {}", program_id))?;
+            .ok_or_else(|| anyhow!("Program not found: {}", program_id))
+            .unwrap();
 
-        // Prepare the VM
-        let mut executable = Executable::from_elf(&program_info.code, self.config.clone())
-            .map_err(|e| anyhow!("Failed to load ELF: {}", e))?;
+        let mut executable = Executable::from_elf(&program_info.code, loader)
+            .map_err(|e| anyhow!("Failed to load ELF: {}", e))
+            .unwrap();
 
-        // Create memory regions
-        let mut memory_mapping = solana_rbpf::memory_region::MemoryMapping::new::<u64>(
-            &[],
-            &[],
-            executable.get_config(),
-        )
-        .map_err(|e| anyhow!("Failed to create memory mapping: {}", e))?;
+        executable.verify::<RequisiteVerifier>().unwrap();
 
-        let mut context_object = TestContextObject::default();
+        let mut mem = vec![0u8; input_data.len()];
 
-        // Create VM
-        let mut vm = EbpfVm::<TestContextObject>::new(
+        #[cfg(all(not(target_os = "windows"), target_arch = "x86_64"))]
+        executable.jit_compile().unwrap();
+
+        let mut context_object = TestContextObject::new(u64::MAX);
+
+        let config = executable.get_config();
+        let sbpf_version = executable.get_sbpf_version();
+
+        let mut stack = AlignedMemory::<{ ebpf::HOST_ALIGN }>::zero_filled(config.stack_size());
+        let stack_len = stack.len();
+
+        let mut heap = AlignedMemory::<{ ebpf::HOST_ALIGN }>::zero_filled(4096);
+
+        let regions: Vec<MemoryRegion> = vec![
+            executable.get_ro_region(),
+            MemoryRegion::new_writable_gapped(
+                stack.as_slice_mut(),
+                ebpf::MM_STACK_START,
+                if !sbpf_version.dynamic_stack_frames() && config.enable_stack_frame_gaps {
+                    config.stack_frame_size as u64
+                } else {
+                    0
+                },
+            ),
+            MemoryRegion::new_writable(heap.as_slice_mut(), ebpf::MM_HEAP_START),
+            MemoryRegion::new_writable(&mut mem, ebpf::MM_INPUT_START),
+        ];
+
+        let memory_mapping = MemoryMapping::new(regions, config, sbpf_version).unwrap();
+
+        let mut vm = EbpfVm::new(
+            executable.get_loader().clone(),
             executable.get_sbpf_version(),
-            executable.get_program(),
-            &mut context_object, // Add context object here
-            memory_mapping,      // Memory mapping is now the 4th argument
-            0,                   // Initial heap size
+            &mut context_object,
+            memory_mapping,
+            stack_len,
         );
 
-        // Create input memory region
-        let input_region = MemoryRegion::new_readonly(input_data, 0x100000000); // Start at 4GB
-        memory_mapping
-            .add_region(input_region)
-            .map_err(|e| anyhow!("Failed to add memory region: {}", e))?;
+        let (instruction_count, result) = vm.execute_program(&executable, false);
+        println!("Result: {result:?}");
+        println!("Instruction Count: {instruction_count}");
 
-        // Execute with gas limit
-        let result = vm.execute_program_with_meter(self.gas_limit);
-        let (return_value, instruction_count) = match result {
-            Ok(value) => (value, vm.get_insn_meter()),
-            Err(e) => return Err(anyhow!("Program execution failed: {}", e)),
-        };
+        let return_value = result.unwrap();
 
-        // Create result
-        let result = ExecutionResult {
+        Ok(ExecutionResult {
             return_value,
             gas_used: instruction_count,
-            logs: Vec::new(), // In a real implementation, collect logs from execution
-        };
-
-        Ok(result)
-    }
-
-    /// Verify a program is valid
-    pub fn verify_program(&self, program_code: &[u8]) -> Result<()> {
-        // Load the ELF file and verify it's valid
-        Executable::from_elf(program_code, self.config.clone())
-            .map_err(|e| anyhow!("Invalid program: {}", e))?;
-
-        // In a real implementation, you'd perform more checks:
-        // - Check for privileged instructions
-        // - Verify program size limits
-        // - Check for potential infinite loops
-        // - Validate memory accesses
-
-        Ok(())
+        })
     }
 }
 

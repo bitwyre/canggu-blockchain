@@ -67,12 +67,6 @@ struct NodeBehaviour {
     mdns: Mdns,
 }
 
-impl From<MdnsEvent> for NodeBehaviourEvent {
-    fn from(event: MdnsEvent) -> Self {
-        NodeBehaviourEvent::Mdns(event)
-    }
-}
-
 /// Events produced by the combined network behavior
 #[derive(Debug)]
 enum NodeBehaviourEvent {

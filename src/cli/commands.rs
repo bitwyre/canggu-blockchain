@@ -3,6 +3,7 @@ use crate::crypto::keys::{Keypair, PublicKey};
 use crate::transaction::tx::Transaction;
 use anyhow::{Result, anyhow};
 use serde_json::json;
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
