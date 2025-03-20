@@ -1,8 +1,6 @@
 use anyhow::{Result, anyhow};
-use ed25519_dalek::{
-    Keypair as Ed25519Keypair, PublicKey as Ed25519PublicKey, Signature as Ed25519Signature,
-    Signer, Verifier,
-};
+use ed25519_dalek::{Signature as Ed25519Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use rand::TryRngCore;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -11,7 +9,7 @@ use std::path::Path;
 
 /// A public key (Ed25519)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct PublicKey(pub Ed25519PublicKey);
+pub struct PublicKey(pub VerifyingKey);
 
 /// A signature (Ed25519)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -19,33 +17,45 @@ pub struct Signature(pub Ed25519Signature);
 
 /// A keypair (Ed25519)
 pub struct Keypair {
-    keypair: Ed25519Keypair,
+    signing_key: SigningKey,
+    verifying_key: VerifyingKey,
 }
 
 impl Keypair {
-    /// Generate a random keypair
+    // Generate a random keypair
     pub fn random() -> Self {
         let mut csprng = OsRng {};
-        let keypair = Ed25519Keypair::generate(&mut csprng);
-        Self { keypair }
-    }
 
+        // Generate random bytes for keypair
+        let mut keypair_bytes = [0u8; 64]; // 32 bytes for public + 32 for private
+        csprng.try_fill_bytes(&mut keypair_bytes);
+
+        // Create the SigningKey from keypair bytes
+        let signing_key =
+            SigningKey::from_keypair_bytes(&keypair_bytes).expect("Failed to generate keypair");
+        let verifying_key = signing_key.verifying_key();
+
+        Self {
+            signing_key,
+            verifying_key,
+        }
+    }
     /// Get the public key
     pub fn public_key(&self) -> PublicKey {
-        PublicKey(self.keypair.public)
+        PublicKey(self.verifying_key)
     }
 
     /// Sign a message
     pub fn sign(&self, message: &[u8]) -> Signature {
-        let signature = self.keypair.sign(message);
+        let signature = self.signing_key.sign(message);
         Signature(signature)
     }
 
     /// Save the keypair to a file
     pub fn save_to_file(&self, path: &Path) -> Result<()> {
         let keypair_bytes = bincode::serialize(&KeypairSerialized {
-            public: self.keypair.public.to_bytes(),
-            secret: self.keypair.secret.to_bytes(),
+            public: self.verifying_key.to_bytes(),
+            secret: self.signing_key.to_bytes(),
         })?;
 
         fs::write(path, &keypair_bytes)?;
@@ -57,12 +67,14 @@ impl Keypair {
         let keypair_bytes = fs::read(path)?;
         let keypair_data: KeypairSerialized = bincode::deserialize(&keypair_bytes)?;
 
-        let secret = ed25519_dalek::SecretKey::from_bytes(&keypair_data.secret)?;
-        let public = Ed25519PublicKey::from_bytes(&keypair_data.public)?;
+        let signing_key = SigningKey::from_bytes(&keypair_data.secret.into());
+        let verifying_key = VerifyingKey::from_bytes(&keypair_data.public)
+            .map_err(|e| anyhow!("Invalid public key: {}", e))?;
 
-        let keypair = Ed25519Keypair { secret, public };
-
-        Ok(Self { keypair })
+        Ok(Self {
+            signing_key,
+            verifying_key,
+        })
     }
 }
 
@@ -81,8 +93,12 @@ impl PublicKey {
 
     /// Create from bytes
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        let pubkey = Ed25519PublicKey::from_bytes(bytes)
-            .map_err(|e| anyhow!("Invalid public key: {}", e))?;
+        let pubkey = VerifyingKey::from_bytes(
+            bytes
+                .try_into()
+                .map_err(|_| anyhow!("Invalid public key length"))?,
+        )
+        .map_err(|e| anyhow!("Invalid public key: {}", e))?;
         Ok(Self(pubkey))
     }
 
