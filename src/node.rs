@@ -291,7 +291,7 @@ impl Node {
             self.current_slot,
             parent_hash,
             transactions,
-            self.identity.public_key().to_bytes(),
+            self.identity.public_key().to_bytes().to_vec(),
             poh_hash,
             state_root,
         );

@@ -66,17 +66,33 @@ impl VirtualMachine {
             .map_err(|e| anyhow!("Failed to load ELF: {}", e))?;
 
         // Create memory regions
-        let mut vm = EbpfVm::new(&executable, &[], &[]).unwrap();
+        let mut memory_mapping = solana_rbpf::memory_region::MemoryMapping::new::<u64>(
+            &[],
+            &[],
+            executable.get_config(),
+        )
+        .map_err(|e| anyhow!("Failed to create memory mapping: {}", e))?;
+
+        // Create VM
+        let mut vm = EbpfVm::new(
+            executable.get_sbpf_version(),
+            executable.get_program(),
+            &mut memory_mapping,
+            0, // initial heap size
+        );
 
         // Create input memory region
-        let input_region = MemoryRegion::new_from_slice(input_data, 0, 0);
-        vm.add_memory_region(input_region, false)
+        let input_region = MemoryRegion::new_readonly(input_data, 0x100000000); // Start at 4GB
+        memory_mapping
+            .add_region(input_region)
             .map_err(|e| anyhow!("Failed to add memory region: {}", e))?;
 
         // Execute with gas limit
-        let (return_value, instruction_count) = vm
-            .execute_program_metered()
-            .map_err(|e| anyhow!("Program execution failed: {}", e))?;
+        let result = vm.execute_program_with_meter(self.gas_limit);
+        let (return_value, instruction_count) = match result {
+            Ok(value) => (value, vm.get_insn_meter()),
+            Err(e) => return Err(anyhow!("Program execution failed: {}", e)),
+        };
 
         // Create result
         let result = ExecutionResult {

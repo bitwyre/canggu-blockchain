@@ -1,5 +1,5 @@
 use crate::blockchain::block::Block;
-use crate::crypto::hash::{Hash, Hashable};
+use crate::crypto::hash::Hash;
 use crate::crypto::keys::PublicKey;
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};

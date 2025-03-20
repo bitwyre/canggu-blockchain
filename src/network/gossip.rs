@@ -1,10 +1,10 @@
 use crate::blockchain::block::Block;
-use crate::crypto::hash::Hash;
+use crate::crypto::hash::{Hash, Hashable};
 use crate::network::message::Message;
 use crate::network::peer::PeerManager;
 use crate::transaction::tx::Transaction;
 use libp2p::{
-    PeerId, Transport,
+    NetworkBehaviour, PeerId, Transport,
     core::upgrade,
     gossipsub::{
         Gossipsub, GossipsubConfig, GossipsubConfigBuilder, MessageAuthenticity, MessageId,
@@ -14,7 +14,7 @@ use libp2p::{
     mdns::{Mdns, MdnsConfig, MdnsEvent},
     noise,
     swarm::{NetworkBehaviour, Swarm, SwarmBuilder},
-    tcp::{Config as TcpConfig, GenTcpConfig},
+    tcp::{GenTcpConfig, TcpConfig},
     yamux,
 };
 use log::{debug, error, info, warn};
@@ -58,12 +58,22 @@ impl GossipTopic {
 
 /// Network behavior that combines gossipsub and mDNS
 #[derive(NetworkBehaviour)]
+#[behaviour(out_event = "NodeBehaviourEvent")]
 struct NodeBehaviour {
     /// Gossip protocol for broadcasting messages
     gossipsub: Gossipsub,
 
     /// mDNS for peer discovery
     mdns: Mdns,
+}
+
+/// Events produced by the combined network behavior
+#[derive(Debug)]
+enum NodeBehaviourEvent {
+    /// Events from the gossipsub protocol
+    Gossipsub(libp2p::gossipsub::GossipsubEvent),
+    /// Events from the mDNS protocol
+    Mdns(libp2p::mdns::MdnsEvent),
 }
 
 /// Network service for gossiping messages
@@ -80,9 +90,7 @@ pub struct GossipService {
     /// Channel for outbound messages
     outbound_tx: mpsc::Sender<(PeerId, Message)>,
 
-    /// Channel for outbound messages (receiver end)
-    outbound_rx: Arc<Mutex<Option<mpsc::Receiver<(PeerId, Message)>>>>,
-
+    // Receiver is not needed in the struct since it's moved to the spawned task
     /// Channel for inbound messages from the network
     inbound_tx: mpsc::Sender<(PeerId, Message)>,
 }
@@ -93,7 +101,7 @@ impl GossipService {
         listen_addr: &str,
         max_peers: usize,
         inbound_tx: mpsc::Sender<(PeerId, Message)>,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         // Create communication channel
         let (outbound_tx, outbound_rx) = mpsc::channel(100);
 
@@ -107,7 +115,7 @@ impl GossipService {
         let peer_manager = Arc::new(PeerManager::new(local_peer_id, outbound_tx.clone()));
 
         // Build transport
-        let transport = libp2p::tcp::tokio::Transport::new(TcpConfig::default().nodelay(true))
+        let transport = libp2p::Transport::new(TcpConfig::default().nodelay(true))
             .upgrade(upgrade::Version::V1)
             .authenticate(noise::NoiseAuthenticated::xx(&local_key).unwrap())
             .multiplex(yamux::YamuxConfig::default())
@@ -162,7 +170,7 @@ impl GossipService {
         let seen_blocks_clone = seen_blocks.clone();
 
         tokio::spawn(async move {
-            let mut outbound_rx = outbound_rx;
+            let mut outbound_rx_recv = outbound_rx;
 
             loop {
                 tokio::select! {
@@ -179,7 +187,7 @@ impl GossipService {
                     }
 
                     // Process outbound messages
-                    Some((peer_id, message)) = outbound_rx.lock().unwrap().as_mut().unwrap().recv() => {
+                    Some((peer_id, message)) = outbound_rx_recv.recv() => {
                         Self::handle_outbound_message(
                             &mut swarm,
                             peer_id,
@@ -198,7 +206,6 @@ impl GossipService {
             seen_txs,
             seen_blocks,
             outbound_tx,
-            outbound_rx: Arc::new(Mutex::new(Some(outbound_rx))),
             inbound_tx,
         };
 
@@ -207,10 +214,7 @@ impl GossipService {
 
     /// Handle an event from the swarm
     async fn handle_swarm_event(
-        event: libp2p::swarm::SwarmEvent<
-            <NodeBehaviour as NetworkBehaviour>::ToSwarm,
-            <NodeBehaviour as NetworkBehaviour>::ConnectionHandler,
-        >,
+        event: libp2p::swarm::SwarmEvent<NodeBehaviourEvent>,
         swarm: &mut Swarm<NodeBehaviour>,
         peer_manager: &PeerManager,
         inbound_tx: &mpsc::Sender<(PeerId, Message)>,
@@ -218,7 +222,27 @@ impl GossipService {
         seen_blocks: &Arc<Mutex<HashSet<Hash>>>,
     ) {
         // Handle different event types
-        // This would be a full implementation in a real system
+        match event {
+            libp2p::swarm::SwarmEvent::Behaviour(behaviour_event) => {
+                match behaviour_event {
+                    NodeBehaviourEvent::Gossipsub(gossip_event) => {
+                        // Handle gossipsub events
+                    }
+                    NodeBehaviourEvent::Mdns(mdns_event) => {
+                        // Handle mdns events like peer discovery
+                    }
+                }
+            }
+            libp2p::swarm::SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+                // New peer connected
+            }
+            libp2p::swarm::SwarmEvent::ConnectionClosed { peer_id, .. } => {
+                // Peer disconnected
+            }
+            _ => {
+                // Handle other events
+            }
+        }
     }
 
     /// Handle an outbound message
@@ -337,7 +361,10 @@ impl GossipService {
 
         // Try to request from a random peer
         if !peers.is_empty() {
-            let peer_id = peers[rand::random::<usize>() % peers.len()].id;
+            use rand::Rng;
+            let mut rng = rand::rng();
+            let peer_index = rng.random_range(0..peers.len());
+            let peer_id = peers[peer_index].id;
             let _ = self
                 .outbound_tx
                 .try_send((peer_id, Message::GetBlock { hash }));
@@ -351,7 +378,10 @@ impl GossipService {
 
         // Try to request from a random peer
         if !peers.is_empty() {
-            let peer_id = peers[rand::random::<usize>() % peers.len()].id;
+            use rand::Rng;
+            let mut rng = rand::rng();
+            let peer_index = rng.random_range(0..peers.len());
+            let peer_id = peers[peer_index].id;
             let _ = self
                 .outbound_tx
                 .try_send((peer_id, Message::GetLatestBlock));
@@ -359,9 +389,12 @@ impl GossipService {
     }
 
     /// Add a known peer to connect to
-    pub async fn add_peer(&self, addr: &str) -> Result<(), Box<dyn std::error::Error>> {
-        // Parse address
-        let addr = addr.parse()?;
+    pub async fn add_peer(
+        &self,
+        addr: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Parse address to Multiaddr
+        let addr = addr.parse::<libp2p::Multiaddr>()?;
 
         // Add to known peers
         // In a real implementation, this would dial the peer

@@ -1,7 +1,8 @@
 use crate::blockchain::block::Block;
-use crate::crypto::hash::Hash;
+use crate::crypto::hash::{Hash, Hashable};
 use crate::transaction::tx::Transaction;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 /// Network message types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,6 +56,16 @@ pub enum Message {
     },
 }
 
+/// Custom error type for message encoding/decoding
+#[derive(Debug, thiserror::Error)]
+pub enum MessageError {
+    #[error("Serialization error: {0}")]
+    SerializationError(#[from] bincode::Error),
+
+    #[error("Deserialization error: {0}")]
+    DeserializationError(String),
+}
+
 /// Encode a message to bytes
 pub fn encode_message(message: &Message) -> Result<Vec<u8>, bincode::Error> {
     bincode::serialize(message)
@@ -63,4 +74,35 @@ pub fn encode_message(message: &Message) -> Result<Vec<u8>, bincode::Error> {
 /// Decode a message from bytes
 pub fn decode_message(bytes: &[u8]) -> Result<Message, bincode::Error> {
     bincode::deserialize(bytes)
+}
+
+impl fmt::Display for Message {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Message::Ping { nonce } => write!(f, "Ping({})", nonce),
+            Message::Pong { nonce } => write!(f, "Pong({})", nonce),
+            Message::Transaction(tx) => write!(f, "Transaction(hash={})", tx.hash()),
+            Message::Block(block) => write!(
+                f,
+                "Block(slot={}, hash={})",
+                block.header.slot,
+                block.hash()
+            ),
+            Message::GetBlock { hash } => write!(f, "GetBlock({})", hash),
+            Message::GetBlockBySlot { slot } => write!(f, "GetBlockBySlot({})", slot),
+            Message::GetLatestBlock => write!(f, "GetLatestBlock"),
+            Message::GetPeerInfo => write!(f, "GetPeerInfo"),
+            Message::PeerInfo {
+                version,
+                height,
+                genesis_hash,
+            } => {
+                write!(
+                    f,
+                    "PeerInfo(version={}, height={}, genesis={})",
+                    version, height, genesis_hash
+                )
+            }
+        }
+    }
 }

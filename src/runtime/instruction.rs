@@ -104,7 +104,7 @@ pub fn create_transfer_instruction(
 ) -> InstructionData {
     // In a real implementation, this would use the system program
     // For simplicity, we're using a placeholder program ID
-    let system_program_id = ProgramId([1; 32]);
+    let system_program_id = ProgramId::new([1; 32]);
 
     // Create account metadata
     let accounts = vec![

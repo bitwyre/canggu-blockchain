@@ -1,4 +1,4 @@
-use crate::crypto::hash::Hash;
+use crate::crypto::hash::{Hash, Hashable};
 use crate::transaction::tx::Transaction;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};

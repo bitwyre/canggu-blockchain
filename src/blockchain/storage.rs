@@ -55,8 +55,10 @@ impl BlockchainStorage {
 
         if let Some(hash_bytes) = self.db.get(key)? {
             let hash: Hash = bincode::deserialize(&hash_bytes)?;
-            self.get_block(&hash)?
-                .ok_or_else(|| anyhow!("Block hash exists but block not found"))
+            match self.get_block(&hash)? {
+                Some(block) => Ok(Some(block)),
+                None => Err(anyhow!("Block hash exists but block not found")),
+            }
         } else {
             Ok(None)
         }
