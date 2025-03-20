@@ -144,7 +144,9 @@ impl Node {
         // Initialize gossip service
         let listen_addr = format!("/ip4/0.0.0.0/tcp/{}", self.config.p2p_port);
         let gossip_service =
-            GossipService::new(&listen_addr, self.config.max_peers, message_tx.clone()).await?;
+            GossipService::new(&listen_addr, self.config.max_peers, message_tx.clone())
+                .await
+                .map_err(|e| anyhow!(e))?;
 
         // Initialize instruction processor
         let instruction_processor = InstructionProcessor::new(Arc::clone(&state));
