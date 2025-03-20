@@ -3,6 +3,7 @@ use crate::crypto::hash::Hash;
 use crate::runtime::program::ProgramId;
 use anyhow::{Result, anyhow};
 use solana_rbpf::memory_region::MemoryRegion;
+use solana_rbpf::vm::TestContextObject;
 use solana_rbpf::vm::{Config as RbpfConfig, EbpfVm, Executable};
 use std::sync::{Arc, RwLock};
 
@@ -73,12 +74,15 @@ impl VirtualMachine {
         )
         .map_err(|e| anyhow!("Failed to create memory mapping: {}", e))?;
 
+        let mut context_object = TestContextObject::default();
+
         // Create VM
-        let mut vm = EbpfVm::new(
+        let mut vm = EbpfVm::<TestContextObject>::new(
             executable.get_sbpf_version(),
             executable.get_program(),
-            &mut memory_mapping,
-            0, // initial heap size
+            &mut context_object, // Add context object here
+            memory_mapping,      // Memory mapping is now the 4th argument
+            0,                   // Initial heap size
         );
 
         // Create input memory region

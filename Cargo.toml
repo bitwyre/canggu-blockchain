@@ -23,7 +23,7 @@ serde_json = "1.0"
 
 # Blockchain basics
 serde = { version = "1.0", features = ["derive"] } # Serialization
-sha2 = "0.10"                                          # Hashing (SHA-256 fallback)
+sha2 = "0.10"                                      # Hashing (SHA-256 fallback)
 
 tokio = { version = "1.28", features = ["full"] }
 async-trait = "0.1.68"
