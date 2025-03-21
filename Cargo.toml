@@ -45,6 +45,8 @@ libp2p = { version = "0.43.0", features = [
     "gossipsub",
 ] }
 
+void = "1.0.2"
+
 # Storage
 sled = "0.34"
 

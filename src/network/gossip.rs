@@ -3,12 +3,13 @@ use crate::crypto::hash::{Hash, Hashable};
 use crate::network::message::Message;
 use crate::network::peer::PeerManager;
 use crate::transaction::tx::Transaction;
+use libp2p::futures::StreamExt;
 use libp2p::{
     NetworkBehaviour, PeerId, Transport,
     core::upgrade,
     gossipsub::{
         Gossipsub, GossipsubConfig, GossipsubConfigBuilder, MessageAuthenticity, MessageId,
-        ValidationMode,
+        ValidationMode, error::GossipsubHandlerError,
     },
     identity,
     mdns::{Mdns, MdnsConfig, MdnsEvent},
@@ -67,6 +68,18 @@ struct NodeBehaviour {
     mdns: Mdns,
 }
 
+impl From<libp2p::gossipsub::GossipsubEvent> for NodeBehaviourEvent {
+    fn from(event: libp2p::gossipsub::GossipsubEvent) -> Self {
+        NodeBehaviourEvent::Gossipsub(event)
+    }
+}
+
+impl From<libp2p::mdns::MdnsEvent> for NodeBehaviourEvent {
+    fn from(event: libp2p::mdns::MdnsEvent) -> Self {
+        NodeBehaviourEvent::Mdns(event)
+    }
+}
+
 /// Events produced by the combined network behavior
 #[derive(Debug)]
 enum NodeBehaviourEvent {
@@ -115,9 +128,17 @@ impl GossipService {
         let peer_manager = Arc::new(PeerManager::new(local_peer_id, outbound_tx.clone()));
 
         // Build transport
-        let transport = libp2p::Transport::new(TcpConfig::default().nodelay(true))
+        let transport = TcpConfig::new()
+            .nodelay(true)
             .upgrade(upgrade::Version::V1)
-            .authenticate(noise::NoiseAuthenticated::xx(&local_key).unwrap())
+            .authenticate(
+                noise::NoiseConfig::xx(
+                    noise::Keypair::<noise::X25519Spec>::new()
+                        .into_authentic(&local_key)
+                        .expect("Signing libp2p-noise static DH keypair failed."),
+                )
+                .into_authenticated(),
+            )
             .multiplex(yamux::YamuxConfig::default())
             .boxed();
 
@@ -149,13 +170,12 @@ impl GossipService {
         let mdns = Mdns::new(MdnsConfig::default()).await?;
 
         // Create swarm
-        let mut swarm = SwarmBuilder::with_tokio_executor(
-            transport,
-            NodeBehaviour { gossipsub, mdns },
-            local_peer_id,
-        )
-        .build();
-
+        let mut swarm =
+            SwarmBuilder::new(transport, NodeBehaviour { gossipsub, mdns }, local_peer_id)
+                .executor(Box::new(|fut| {
+                    tokio::spawn(fut);
+                }))
+                .build();
         // Listen on the given address
         swarm.listen_on(listen_addr.parse()?)?;
 
@@ -214,7 +234,10 @@ impl GossipService {
 
     /// Handle an event from the swarm
     async fn handle_swarm_event(
-        event: libp2p::swarm::SwarmEvent<NodeBehaviourEvent>,
+        event: libp2p::swarm::SwarmEvent<
+            NodeBehaviourEvent,
+            libp2p::core::either::EitherError<GossipsubHandlerError, void::Void>,
+        >,
         swarm: &mut Swarm<NodeBehaviour>,
         peer_manager: &PeerManager,
         inbound_tx: &mpsc::Sender<(PeerId, Message)>,
@@ -248,61 +271,43 @@ impl GossipService {
     /// Handle an outbound message
     async fn handle_outbound_message(
         swarm: &mut Swarm<NodeBehaviour>,
-        peer_id: PeerId,
+        _peer_id: PeerId, // Unused for now
         message: Message,
         seen_txs: &Arc<Mutex<HashSet<Hash>>>,
         seen_blocks: &Arc<Mutex<HashSet<Hash>>>,
     ) {
-        // Handle different message types for direct or gossip communication
         match &message {
             Message::Transaction(tx) => {
-                // Add to seen transactions
                 let tx_hash = tx.hash();
                 {
                     let mut seen = seen_txs.lock().unwrap();
                     seen.insert(tx_hash);
                 }
-
-                // Publish to gossipsub
                 let topic = GossipTopic::Transactions.as_str();
                 let topic_id = libp2p::gossipsub::IdentTopic::new(topic);
-
                 let encoded = bincode::serialize(&message).unwrap_or_default();
                 if let Err(e) = swarm.behaviour_mut().gossipsub.publish(topic_id, encoded) {
                     error!("Failed to publish transaction: {}", e);
                 }
             }
             Message::Block(block) => {
-                // Add to seen blocks
                 let block_hash = block.hash();
                 {
                     let mut seen = seen_blocks.lock().unwrap();
                     seen.insert(block_hash);
                 }
-
-                // Publish to gossipsub
                 let topic = GossipTopic::Blocks.as_str();
                 let topic_id = libp2p::gossipsub::IdentTopic::new(topic);
-
                 let encoded = bincode::serialize(&message).unwrap_or_default();
                 if let Err(e) = swarm.behaviour_mut().gossipsub.publish(topic_id, encoded) {
                     error!("Failed to publish block: {}", e);
                 }
             }
             _ => {
-                // Direct message to peer
-                let encoded = bincode::serialize(&message).unwrap_or_default();
-                if let Err(e) = swarm
-                    .behaviour_mut()
-                    .gossipsub
-                    .publish_direct(peer_id, encoded)
-                {
-                    error!("Failed to send direct message: {}", e);
-                }
+                warn!("Unhandled message type for gossip");
             }
         }
     }
-
     /// Get the peer manager
     pub fn peer_manager(&self) -> Arc<PeerManager> {
         self.peer_manager.clone()
