@@ -367,8 +367,8 @@ impl GossipService {
         // Try to request from a random peer
         if !peers.is_empty() {
             use rand::Rng;
-            let mut rng = rand::rng();
-            let peer_index = rng.random_range(0..peers.len());
+            let mut rng = rand::thread_rng();
+            let peer_index = rng.gen_range(0..peers.len());
             let peer_id = peers[peer_index].id;
             let _ = self
                 .outbound_tx
@@ -384,8 +384,8 @@ impl GossipService {
         // Try to request from a random peer
         if !peers.is_empty() {
             use rand::Rng;
-            let mut rng = rand::rng();
-            let peer_index = rng.random_range(0..peers.len());
+            let mut rng = rand::thread_rng();
+            let peer_index = rng.gen_range(0..peers.len());
             let peer_id = peers[peer_index].id;
             let _ = self
                 .outbound_tx

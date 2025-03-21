@@ -1,6 +1,7 @@
 use anyhow::{Result, anyhow};
-use ed25519_dalek::{Signature as Ed25519Signature, Signer, SigningKey, Verifier, VerifyingKey};
-use rand::TryRngCore;
+use ed25519_dalek::{
+    SecretKey, Signature as Ed25519Signature, Signer, SigningKey, Verifier, VerifyingKey,
+};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -24,15 +25,8 @@ pub struct Keypair {
 impl Keypair {
     // Generate a random keypair
     pub fn random() -> Self {
-        let mut csprng = OsRng {};
-
-        // Generate random bytes for keypair
-        let mut keypair_bytes = [0u8; 64]; // 32 bytes for public + 32 for private
-        csprng.try_fill_bytes(&mut keypair_bytes);
-
-        // Create the SigningKey from keypair bytes
-        let signing_key =
-            SigningKey::from_keypair_bytes(&keypair_bytes).expect("Failed to generate keypair");
+        let mut csprng = OsRng;
+        let signing_key = SigningKey::generate(&mut csprng);
         let verifying_key = signing_key.verifying_key();
 
         Self {
