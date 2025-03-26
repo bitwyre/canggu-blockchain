@@ -75,19 +75,19 @@ impl Node {
         let identity = if identity_path.exists() {
             match Keypair::load_from_file(&identity_path) {
                 Ok(keypair) => {
-                    info!("Loaded identity: {}", keypair.public_key());
+                    info!("Loaded identity: {}", keypair.public());
                     keypair
                 }
                 Err(_) => {
                     warn!("Failed to load identity, generating new one");
-                    let keypair = Keypair::random();
+                    let keypair = Keypair::new();
                     let _ = keypair.save_to_file(&identity_path);
                     keypair
                 }
             }
         } else {
             info!("Generating new identity");
-            let keypair = Keypair::random();
+            let keypair = Keypair::new();
             let _ = keypair.save_to_file(&identity_path);
             keypair
         };
@@ -132,7 +132,7 @@ impl Node {
         let mut leader_schedule = SlotLeaderSchedule::new(100); // 100 slots per epoch
 
         // Add self as a validator
-        let self_pubkey = self.identity.public_key();
+        let self_pubkey = self.identity.public();
         leader_schedule.add_validator(self_pubkey, 100); // Stake of 100
 
         // Initialize program registry
@@ -239,7 +239,7 @@ impl Node {
         let random_seed = Hash([0; 32]); // In a real implementation, this would be from previous blocks
 
         if let Some(leader) = leader_schedule.get_slot_leader(self.current_slot, random_seed) {
-            let our_pubkey = self.identity.public_key();
+            let our_pubkey = self.identity.public();
 
             if leader == our_pubkey {
                 info!("We are the leader for slot {}", self.current_slot);
@@ -293,7 +293,7 @@ impl Node {
             self.current_slot,
             parent_hash,
             transactions,
-            self.identity.public_key().to_bytes().to_vec(),
+            self.identity.public().to_bytes().to_vec(),
             poh_hash,
             state_root,
         );

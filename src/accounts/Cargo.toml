@@ -1,0 +1,15 @@
+[package]
+name = "canggu-account"
+description = "Canggu Account"
+version = "0.1.0"
+authors = { workspace = true }
+repository = { workspace = true }
+homepage = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
+
+[dependencies]
+bincode = { version = "*"}
+serde = "1.0.219"
+serde_bytes = "0.11.17"
+serde_derive = "1.0.219"

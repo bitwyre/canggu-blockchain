@@ -1,6 +1,7 @@
 use crate::crypto::hash::{Hash, Hashable};
 use crate::crypto::keys::{Keypair, PublicKey, Signature};
 use anyhow::Result;
+use ed25519_dalek::Signer;
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -83,7 +84,7 @@ impl Transaction {
 
     /// Create a new token transfer transaction
     pub fn new_transfer(keypair: &Keypair, to: &PublicKey, amount: u64) -> Self {
-        let sender = keypair.public_key();
+        let sender = keypair.public();
         let instruction = Instruction::Transfer {
             to: to.clone(),
             amount,
@@ -100,7 +101,7 @@ impl Transaction {
 
     /// Create a new program deployment transaction
     pub fn new_deploy_program(keypair: &Keypair, code: Vec<u8>) -> Self {
-        let sender = keypair.public_key();
+        let sender = keypair.public();
         let program_id = Hash::hash(&code);
 
         let instruction = Instruction::DeployProgram { program_id, code };
@@ -116,7 +117,7 @@ impl Transaction {
 
     /// Create a new program call transaction
     pub fn new_call_program(keypair: &Keypair, program_id: Hash, data: Vec<u8>) -> Self {
-        let sender = keypair.public_key();
+        let sender = keypair.public();
         let instruction = Instruction::CallProgram { program_id, data };
 
         // In a real implementation, the nonce would be fetched from the account state

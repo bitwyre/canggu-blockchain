@@ -36,7 +36,6 @@ impl BlockchainStorage {
 
         Ok(Self { db, state })
     }
-
     /// Get a block by its hash
     pub fn get_block(&self, hash: &Hash) -> Result<Option<Block>> {
         let key = format!("block:{}", hex::encode(hash.0));

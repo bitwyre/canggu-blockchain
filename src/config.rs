@@ -3,11 +3,28 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Network {
+    Mainnet,
+    Testnet,
+    Devnet,
+}
+
+impl Network {
+    pub fn id(&self) -> &str {
+        match self {
+            Network::Mainnet => "mainnet",
+            Network::Testnet => "testnet",
+            Network::Devnet => "devnet",
+        }
+    }
+}
+
 /// Configuration for the blockchain node
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// Network identifier
-    pub network_id: String,
+    pub network_id: Network,
 
     /// Port for RPC server
     pub rpc_port: u16,
@@ -34,7 +51,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            network_id: "solana-mini-testnet".to_string(),
+            network_id: Network::Devnet,
             rpc_port: 8899,
             p2p_port: 8900,
             max_peers: 50,

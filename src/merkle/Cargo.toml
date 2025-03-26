@@ -1,0 +1,3 @@
+[dependencies]
+
+merkle = { git = "github.com/mintlayer/merkletree-mintlayer"}

@@ -1,5 +1,7 @@
 use clap::{Parser, Subcommand};
+use crypto::keys::Keypair;
 use log::info;
+use rand_core::OsRng;
 use std::path::PathBuf;
 
 mod blockchain;
@@ -11,10 +13,12 @@ mod network;
 mod node;
 mod runtime;
 mod transaction;
+mod accounts;
+pub mod pubkey;
 
 #[derive(Parser)]
-#[command(name = "solana-minimal")]
-#[command(about = "A simplified Solana-like L1 blockchain implementation")]
+#[command(name = "canggu-minimal")]
+#[command(about = "Canggu L1 blockchain implementation")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -64,6 +68,12 @@ enum Commands {
     },
 }
 
+fn get_data_path() -> PathBuf {
+    let home_dir = home::home_dir().expect("Failed to get home directory");
+    let data_path = home_dir.join(".canggu");
+    data_path
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Parse command-line arguments
@@ -83,7 +93,7 @@ async fn main() -> anyhow::Result<()> {
     // Process commands
     match cli.command {
         Commands::Start { port, data_dir } => {
-            let data_dir = data_dir.unwrap_or_else(|| PathBuf::from("./data"));
+            let data_dir = data_dir.unwrap_or_else(|| get_data_path());
             std::fs::create_dir_all(&data_dir)?;
 
             info!("Starting node on port {}", port);
@@ -91,28 +101,32 @@ async fn main() -> anyhow::Result<()> {
             node.start().await?;
         }
         Commands::CreateWallet { output } => {
-            let output = output.unwrap_or_else(|| PathBuf::from("wallet.json"));
-            let keypair = crypto::keys::Keypair::random();
-            keypair.save_to_file(&output)?;
-            println!("Created new wallet at: {}", output.display());
-            println!("Public key: {}", keypair.public_key());
+            let wp = get_data_path().join("wallets").join("wallet.json");
+            let output = output.unwrap_or_else(|| wp.clone());
+            std::fs::create_dir_all(output.parent().unwrap())?;
+            let keypair = Keypair::new();
+            let _ = keypair.save_to_file(&wp).expect("Unable to save to file");
+
+            println!("Public key: {}", keypair.public().to_base58_string());
+            println!("Private key: {}", keypair.to_base58_string());
         }
         Commands::SendTransaction {
             wallet,
             recipient,
             amount,
         } => {
-            let keypair = crypto::keys::Keypair::load_from_file(&wallet)?;
-            let recipient = crypto::keys::PublicKey::from_string(&recipient)?;
+            // let keypair = crypto::keys::Keypair::load_from_file(&wallet)?;
+            // let recipient = crypto::keys::PublicKey::from_string(&recipient)?;
 
-            let tx = transaction::tx::Transaction::new_transfer(&keypair, &recipient, amount);
+            // let tx = transaction::tx::Transaction::new_transfer(&keypair, &recipient, amount);
 
-            // Connect to a node and submit transaction
-            let url = format!("http://localhost:{}", config.rpc_port);
-            let response = transaction::tx::submit_transaction(&url, &tx).await?;
-            println!("Transaction submitted: {}", response.signature);
+            // // Connect to a node and submit transaction
+            // let url = format!("http://localhost:{}", config.rpc_port);
+            // let response = transaction::tx::submit_transaction(&url, &tx).await?;
+            // println!("Transaction submitted: {}", response.signature);
         }
     }
 
     Ok(())
+
 }

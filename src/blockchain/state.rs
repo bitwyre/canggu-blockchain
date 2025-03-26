@@ -1,4 +1,4 @@
-use crate::blockchain::block::Block;
+use crate::{accounts::accounts::Account, blockchain::block::Block};
 use crate::crypto::hash::Hash;
 use crate::crypto::keys::PublicKey;
 use anyhow::{Result, anyhow};
@@ -9,7 +9,7 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BlockchainState {
     /// Current account balances
-    pub accounts: HashMap<PublicKey, AccountInfo>,
+    pub accounts: HashMap<PublicKey, Account>,
 
     /// Deployed programs (smart contracts)
     pub programs: HashMap<Hash, ProgramInfo>,
@@ -20,29 +20,10 @@ pub struct BlockchainState {
     /// Hash of the last block
     pub last_block_hash: Hash,
 }
-
-/// Information about an account
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AccountInfo {
-    /// Account balance
-    pub balance: u64,
-
-    /// Account nonce (for preventing replay attacks)
-    pub nonce: u64,
-
-    /// Account data (optional)
-    pub data: Vec<u8>,
-
-    /// Owner program (if this is a program-controlled account)
-    pub owner: Option<Hash>,
-}
-
 /// Information about a deployed program
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProgramInfo {
-    /// Program code (eBPF bytecode)
     pub code: Vec<u8>,
-
     /// Program owner
     pub owner: PublicKey,
 
@@ -91,26 +72,13 @@ impl BlockchainState {
 
     /// Apply a single transaction to the state
     fn apply_transaction(&mut self, tx: &crate::transaction::tx::Transaction) -> Result<()> {
-        // This is simplified. In a real implementation, you would:
-        // 1. Verify transaction signature
-        // 2. Check nonce to prevent replay
-        // 3. Check balance for transfers
-        // 4. Execute program instructions
-
+ 
         match &tx.instruction {
             crate::transaction::tx::Instruction::Transfer { to, amount } => {
                 let sender = tx.sender.clone();
 
-                // Get sender account or create a new one (for simplicity)
-                let sender_account =
-                    self.accounts
-                        .entry(sender.clone())
-                        .or_insert_with(|| AccountInfo {
-                            balance: 0,
-                            nonce: 0,
-                            data: Vec::new(),
-                            owner: None,
-                        });
+                let sender_account = self.accounts.get_mut(&sender)
+                    .ok_or_else(|| anyhow!("Sender account not found"))?;
 
                 // Check balance
                 if sender_account.balance < *amount {
@@ -122,15 +90,8 @@ impl BlockchainState {
                 sender_account.nonce += 1;
 
                 // Update recipient balance
-                let recipient_account =
-                    self.accounts
-                        .entry(to.clone())
-                        .or_insert_with(|| AccountInfo {
-                            balance: 0,
-                            nonce: 0,
-                            data: Vec::new(),
-                            owner: None,
-                        });
+                let recipient_account = self.accounts.get_mut(to)
+                    .ok_or_else(|| anyhow!("Recipient account not found"))?;
 
                 recipient_account.balance += amount;
             }
@@ -161,9 +122,7 @@ impl BlockchainState {
         }
 
         Ok(())
-    }
-
-    /// Calculate the state root hash
+    }    /// Calculate the state root hash
     pub fn state_root(&self) -> Hash {
         let encoded = bincode::serialize(self).unwrap_or_default();
         Hash::hash(&encoded)
