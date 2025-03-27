@@ -1,12 +1,66 @@
 [package]
-name = "canggu"
+name = "canggu-blockchain"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+authors = ["Canggu Team"]
+description = "A Solana-inspired blockchain implementation"
+
+[workspace]
+members = ["src/accounts", "src/genesis", "src/merkle"]
+
+[workspace.package]
+authors = ["Canggu Team"]
+repository = "https://github.com/canggu/canggu-blockchain"
+homepage = "https://canggu.io"
+license = "MIT OR Apache-2.0"
+edition = "2021"
+
+# [dependencies]
+# # Workspace dependencies
+# canggu-account = { path = "src/accounts" }
+
+# # External dependencies
+# anyhow = "1.0"
+# base64 = "0.13"
+# bincode = "1.3"
+# bs58 = "0.4"
+# clap = { version = "4.0", features = ["derive"] }
+# ed25519-dalek = "2.0"
+# env_logger = "0.10"
+# hex = "0.4"
+# home = "0.5"
+# jsonrpc-core = "18.0"
+# jsonrpc-http-server = "18.0"
+# libp2p = { version = "0.43.0", features = [
+#     "tcp-tokio",
+#     "noise",
+#     "yamux",
+#     "gossipsub",
+#     "mdns",
+# ] }
+# log = "0.4"
+# rand = "0.8"
+# rand_core = "0.6"
+# reqwest = { version = "0.11", features = ["json"] }
+# serde = { version = "1.0", features = ["derive"] }
+# serde_bytes = "0.11"
+# serde_derive = "1.0"
+# serde_json = "1.0"
+# sha2 = "0.10"
+# sled = "0.34"
+# thiserror = "1.0"
+# tokio = { version = "1.0", features = ["full"] }
+
+# [dev-dependencies]
+# tempfile = "3.3"
+# tokio-test = "0.4"
 
 [dependencies]
 # Quantum-resistant crypto (like CRYSTALS-Kyber/Dilithium)
 pqcrypto-kyber = "0.8.1"     # Kyber for key exchange
 pqcrypto-dilithium = "0.5.0" # Dilithium for signatures
+
+base64 = "0.13"
 
 # ZK-SNARKs (zero-knowledge proofs)
 bellman = "0.14.0" # For ZK-SNARK circuits
@@ -72,10 +126,3 @@ chrono = "0.4"
 tempfile = "3.5"
 assert_cmd = "2.0"
 criterion = "0.5.1"
-
-# [[bench]]
-# name = "consensus_bench"
-# harness = false
-
-# [workspace]
-# members = [".", "examples/basic_contract"]

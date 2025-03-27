@@ -4,17 +4,17 @@ use log::info;
 use rand_core::OsRng;
 use std::path::PathBuf;
 
+mod accounts;
 mod blockchain;
 mod cli;
 mod config;
 mod consensus;
 mod crypto;
 mod network;
-mod node;
+pub mod pubkey;
 mod runtime;
 mod transaction;
-mod accounts;
-pub mod pubkey;
+mod validator_node;
 
 #[derive(Parser)]
 #[command(name = "canggu-minimal")]
@@ -97,7 +97,7 @@ async fn main() -> anyhow::Result<()> {
             std::fs::create_dir_all(&data_dir)?;
 
             info!("Starting node on port {}", port);
-            let mut node = node::Node::new(config, data_dir, port);
+            let mut node = validator_node::Node::new(config, data_dir, port);
             node.start().await?;
         }
         Commands::CreateWallet { output } => {
@@ -128,5 +128,4 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
-
 }

@@ -1,9 +1,11 @@
 use crate::blockchain::state::BlockchainState;
+use crate::crypto::hash::Hash;
 use crate::crypto::keys::PublicKey;
 use crate::runtime::program::ProgramId;
-use crate::runtime::vm::VirtualMachine;
-use anyhow::{Result, anyhow};
+use crate::runtime::vm::{ExecutionContext, VirtualMachine};
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 /// Instruction data that can be passed to programs
@@ -44,7 +46,7 @@ pub struct InstructionProcessor {
 impl InstructionProcessor {
     /// Create a new instruction processor
     pub fn new(state: Arc<RwLock<BlockchainState>>) -> Self {
-        let vm = VirtualMachine::new(Arc::clone(&state), 1_000_000); // Default gas limit
+        let vm = VirtualMachine::new(1_000_000, 1_000_000); // max_instructions, gas_limit
 
         Self { state, vm }
     }
@@ -74,12 +76,18 @@ impl InstructionProcessor {
         }
 
         // Execute program
-        let result = self
-            .vm
-            .execute(&instruction.program_id, &instruction.data)?;
+        let result = self.vm.execute(
+            &instruction.data,
+            &mut ExecutionContext {
+                program_id: instruction.program_id,
+                caller: signers[0].clone(), // Assuming first signer is caller
+                data: instruction.data.clone(),
+                accounts: HashMap::new(), // You'll need to populate this
+            },
+        )?;
 
-        // Return program's return value
-        Ok(result.return_value)
+        // Return data instead of return_value
+        Ok(result.data[0] as u64) // Or however you want to interpret the result
     }
 
     /// Process multiple instructions in a transaction
@@ -129,5 +137,86 @@ pub fn create_transfer_instruction(
         program_id: system_program_id,
         accounts,
         data,
+    }
+}
+
+/// Program instruction types
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Instruction {
+    /// Transfer tokens from one account to another
+    Transfer {
+        /// Source account
+        from: PublicKey,
+
+        /// Destination account
+        to: PublicKey,
+
+        /// Amount to transfer
+        amount: u64,
+    },
+
+    /// Create a new account
+    CreateAccount {
+        /// Owner of the new account
+        owner: PublicKey,
+
+        /// Initial balance
+        balance: u64,
+
+        /// Space to allocate for account data
+        space: u64,
+    },
+
+    /// Call a program
+    CallProgram {
+        /// Program ID to call
+        program_id: Hash,
+
+        /// Accounts to pass to the program
+        accounts: Vec<PublicKey>,
+
+        /// Data to pass to the program
+        data: Vec<u8>,
+    },
+
+    /// Deploy a program
+    DeployProgram {
+        /// Program ID (hash of the code)
+        program_id: Hash,
+
+        /// Program code
+        code: Vec<u8>,
+    },
+}
+
+impl Instruction {
+    /// Get the program ID for this instruction
+    pub fn program_id(&self) -> Hash {
+        match self {
+            Self::Transfer { .. } => Hash::default(), // System program
+            Self::CreateAccount { .. } => Hash::default(), // System program
+            Self::CallProgram { program_id, .. } => *program_id,
+            Self::DeployProgram { .. } => Hash::default(), // Loader program
+        }
+    }
+
+    /// Get the accounts required for this instruction
+    pub fn accounts(&self) -> Vec<PublicKey> {
+        match self {
+            Self::Transfer { from, to, .. } => vec![from.clone(), to.clone()],
+            Self::CreateAccount { owner, .. } => vec![owner.clone()],
+            Self::CallProgram { accounts, .. } => accounts.clone(),
+            Self::DeployProgram { .. } => Vec::new(),
+        }
+    }
+
+    /// Serialize the instruction to bytes
+    pub fn serialize(&self) -> Vec<u8> {
+        bincode::serialize(self).unwrap_or_default()
+    }
+
+    /// Deserialize from bytes
+    pub fn deserialize(bytes: &[u8]) -> Result<Self, bincode::Error> {
+        bincode::deserialize(bytes)
     }
 }

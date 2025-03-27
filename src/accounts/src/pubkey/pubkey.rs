@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
-use anyhow::{Result, anyhow};
 
 /// A public key (wrapper around a byte array)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -14,9 +13,9 @@ impl Pubkey {
     }
     
     /// Create a public key from a slice
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, &'static str> {
         if bytes.len() != 32 {
-            return Err(anyhow!("Invalid public key length"));
+            return Err("Invalid public key length");
         }
         
         let mut result = [0u8; 32];
@@ -36,17 +35,17 @@ impl Pubkey {
     }
     
     /// Create from a base58 string
-    pub fn from_string(s: &str) -> Result<Self> {
+    pub fn from_string(s: &str) -> Result<Self, String> {
         let bytes = bs58::decode(s)
             .into_vec()
-            .map_err(|e| anyhow!("Invalid base58 string: {}", e))?;
+            .map_err(|e| format!("Invalid base58 string: {}", e))?;
             
-        Self::from_bytes(&bytes)
+        Self::from_bytes(&bytes).map_err(|e| e.to_string())
     }
 }
 
 impl FromStr for Pubkey {
-    type Err = anyhow::Error;
+    type Err = String;
     
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::from_string(s)
@@ -63,4 +62,4 @@ impl Default for Pubkey {
     fn default() -> Self {
         Self([0; 32])
     }
-}
+} 

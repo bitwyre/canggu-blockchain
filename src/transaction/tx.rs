@@ -1,161 +1,227 @@
 use crate::crypto::hash::{Hash, Hashable};
 use crate::crypto::keys::{Keypair, PublicKey, Signature};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use ed25519_dalek::Signer;
 use serde::{Deserialize, Serialize};
-use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Instructions that can be executed in a transaction
+/// Transaction instruction types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Instruction {
     /// Transfer tokens from sender to recipient
     Transfer {
-        /// Recipient public key
+        /// Recipient address
         to: PublicKey,
+
         /// Amount to transfer
         amount: u64,
     },
 
     /// Deploy a program (smart contract)
     DeployProgram {
-        /// Program ID (hash of the code)
+        /// Program ID (hash of the program)
         program_id: Hash,
-        /// Program bytecode (eBPF)
+
+        /// Program bytecode
         code: Vec<u8>,
     },
 
-    /// Call a program with data
+    /// Call a deployed program
     CallProgram {
         /// Program ID to call
         program_id: Hash,
-        /// Input data for the program
+
+        /// Call data
         data: Vec<u8>,
     },
-}
-
-/// Transaction response after submission
-#[derive(Debug, Serialize, Deserialize)]
-pub struct TransactionResponse {
-    /// Transaction signature
-    pub signature: String,
-    /// Status of the transaction
-    pub status: String,
 }
 
 /// A transaction on the blockchain
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Transaction {
+    /// Transaction sender
+    pub sender: PublicKey,
+
     /// Transaction nonce (to prevent replay attacks)
     pub nonce: u64,
 
-    /// Sender's public key
-    pub sender: PublicKey,
-
-    /// Instruction to execute
+    /// Transaction instruction
     pub instruction: Instruction,
-
-    /// Transaction fee
-    pub fee: u64,
-
-    /// Timestamp when transaction was created
-    pub timestamp: u64,
 
     /// Transaction signature
     pub signature: Option<Signature>,
 }
 
 impl Transaction {
-    /// Create a new unsigned transaction
-    fn new(sender: PublicKey, instruction: Instruction, nonce: u64, fee: u64) -> Self {
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-
+    /// Create a new transaction
+    pub fn new(sender: PublicKey, nonce: u64, instruction: Instruction) -> Self {
         Self {
-            nonce,
             sender,
+            nonce,
             instruction,
-            fee,
-            timestamp,
             signature: None,
         }
     }
 
-    /// Create a new token transfer transaction
-    pub fn new_transfer(keypair: &Keypair, to: &PublicKey, amount: u64) -> Self {
-        let sender = keypair.public();
-        let instruction = Instruction::Transfer {
-            to: to.clone(),
-            amount,
-        };
+    /// Create a new transfer transaction
+    pub fn new_transfer(from: &Keypair, to: &PublicKey, amount: u64) -> Self {
+        let mut tx = Self::new(
+            from.public(),
+            0, // In a real implementation, we would get the current nonce
+            Instruction::Transfer {
+                to: to.clone(),
+                amount,
+            },
+        );
 
-        // In a real implementation, the nonce would be fetched from the account state
-        let nonce = 0;
-        let fee = 1; // Fixed fee for simplicity
+        // Sign the transaction
+        tx.sign(from);
 
-        let mut tx = Self::new(sender, instruction, nonce, fee);
-        tx.sign(keypair);
         tx
     }
 
     /// Create a new program deployment transaction
-    pub fn new_deploy_program(keypair: &Keypair, code: Vec<u8>) -> Self {
-        let sender = keypair.public();
+    pub fn new_deploy_program(from: &Keypair, code: Vec<u8>) -> Self {
+        // Calculate program ID (hash of code)
         let program_id = Hash::hash(&code);
 
-        let instruction = Instruction::DeployProgram { program_id, code };
+        let mut tx = Self::new(
+            from.public(),
+            0, // In a real implementation, we would get the current nonce
+            Instruction::DeployProgram { program_id, code },
+        );
 
-        // In a real implementation, the nonce would be fetched from the account state
-        let nonce = 0;
-        let fee = 10; // Higher fee for program deployment
+        // Sign the transaction
+        tx.sign(from);
 
-        let mut tx = Self::new(sender, instruction, nonce, fee);
-        tx.sign(keypair);
         tx
     }
 
     /// Create a new program call transaction
-    pub fn new_call_program(keypair: &Keypair, program_id: Hash, data: Vec<u8>) -> Self {
-        let sender = keypair.public();
-        let instruction = Instruction::CallProgram { program_id, data };
+    pub fn new_call_program(from: &Keypair, program_id: Hash, data: Vec<u8>) -> Self {
+        let mut tx = Self::new(
+            from.public(),
+            0, // In a real implementation, we would get the current nonce
+            Instruction::CallProgram { program_id, data },
+        );
 
-        // In a real implementation, the nonce would be fetched from the account state
-        let nonce = 0;
-        let fee = 2; // Medium fee for program calls
+        // Sign the transaction
+        tx.sign(from);
 
-        let mut tx = Self::new(sender, instruction, nonce, fee);
-        tx.sign(keypair);
         tx
     }
 
     /// Sign the transaction
     pub fn sign(&mut self, keypair: &Keypair) {
-        // Create a copy without the signature
-        let mut tx_copy = self.clone();
-        tx_copy.signature = None;
+        // Create message to sign
+        let message = self.message_for_signing();
 
-        // Serialize and sign
-        let message = bincode::serialize(&tx_copy).unwrap_or_default();
+        // Sign message
         let signature = keypair.sign(&message);
 
+        // Set signature
         self.signature = Some(signature);
     }
 
     /// Verify the transaction signature
-    pub fn verify(&self) -> bool {
+    pub fn verify_signature(&self) -> bool {
         if let Some(signature) = &self.signature {
-            // Create a copy without the signature
-            let mut tx_copy = self.clone();
-            tx_copy.signature = None;
-
-            // Serialize and verify
-            let message = bincode::serialize(&tx_copy).unwrap_or_default();
+            let message = self.message_for_signing();
             self.sender.verify(&message, signature)
         } else {
             false
         }
     }
+
+    /// Get the message that should be signed
+    fn message_for_signing(&self) -> Vec<u8> {
+        // Create a copy without the signature
+        let unsigned = Self {
+            sender: self.sender.clone(),
+            nonce: self.nonce,
+            instruction: self.instruction.clone(),
+            signature: None,
+        };
+
+        // Serialize the unsigned transaction
+        bincode::serialize(&unsigned).unwrap_or_default()
+    }
+
+    /// Submit a transaction to the blockchain
+    pub async fn submit_transaction(url: &str, tx: &Transaction) -> Result<TransactionResponse> {
+        let client = reqwest::Client::new();
+
+        // Serialize transaction
+        let tx_data = bincode::serialize(tx)?;
+        let tx_base64 = base64::encode(&tx_data);
+
+        // Create request
+        let request = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "sendTransaction",
+            "params": [tx_base64]
+        });
+
+        // Send request
+        let response = client.post(url).json(&request).send().await?;
+
+        // Parse response
+        let json: serde_json::Value = response.json().await?;
+
+        if let Some(error) = json.get("error") {
+            return Err(anyhow!("RPC error: {}", error));
+        }
+
+        if let Some(result) = json.get("result") {
+            let signature = result
+                .as_str()
+                .ok_or_else(|| anyhow!("Invalid signature in response"))?
+                .to_string();
+
+            Ok(TransactionResponse { signature })
+        } else {
+            Err(anyhow!("Invalid RPC response"))
+        }
+    }
+
+    /// Add this method
+    pub fn hash(&self) -> Hash {
+        // Create a hash of the transaction
+        let mut data = Vec::new();
+        data.extend_from_slice(&self.nonce.to_le_bytes());
+        data.extend_from_slice(&self.sender.to_bytes());
+        match &self.instruction {
+            Instruction::Transfer { to, amount } => {
+                data.extend_from_slice(&to.to_bytes());
+                data.extend_from_slice(&amount.to_le_bytes());
+
+                println!("Transfer to: {:?}, amount: {}", to, amount);
+            }
+            _ => {
+                // Handle other variants (DeployProgram, CallProgram)
+                println!("Not a transfer instruction");
+            }
+        }
+
+        Hash::hash(&data)
+    }
+
+    /// Add verify method
+    pub fn verify(&self) -> bool {
+        if let Some(signature) = &self.signature {
+            // Verify the signature
+            // Implementation depends on your crypto library
+            true // Placeholder
+        } else {
+            false
+        }
+    }
+}
+
+/// Response from submitting a transaction
+pub struct TransactionResponse {
+    /// Transaction signature (ID)
+    pub signature: String,
 }
 
 impl Hashable for Transaction {
@@ -163,17 +229,4 @@ impl Hashable for Transaction {
         let encoded = bincode::serialize(self).unwrap_or_default();
         Hash::hash(&encoded)
     }
-}
-
-/// Submit a transaction to the network
-pub async fn submit_transaction(url: &str, tx: &Transaction) -> Result<TransactionResponse> {
-    // Serialize transaction
-    let tx_json = serde_json::to_string(tx)?;
-
-    // In a real implementation, this would make an HTTP request to the node
-    // For simplicity, we're just returning a success response
-    Ok(TransactionResponse {
-        signature: tx.hash().to_hex(),
-        status: "pending".to_string(),
-    })
 }

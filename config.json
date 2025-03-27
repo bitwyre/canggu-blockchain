@@ -1,0 +1,10 @@
+{
+  "network_id": "Testnet",
+  "rpc_port": 8899,
+  "p2p_port": 8900,
+  "max_peers": 50,
+  "block_time_target": 400,
+  "seed_nodes": [],
+  "max_transaction_size": 10240,
+  "max_transactions_per_block": 1000
+}

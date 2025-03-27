@@ -1,6 +1,9 @@
+use crate::accounts::accounts::Account;
+use crate::blockchain::state::BlockchainState;
 use crate::crypto::hash::Hash;
 use crate::crypto::keys::PublicKey;
-use anyhow::Result;
+use crate::runtime::vm::{ExecutionContext, ExecutionResult, VirtualMachine};
+use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
@@ -64,5 +67,79 @@ impl ProgramRegistry {
     pub fn get_all_programs(&self) -> Vec<Program> {
         let programs = self.programs.read().unwrap();
         programs.values().cloned().collect()
+    }
+}
+
+/// Program manager for handling program execution
+pub struct ProgramManager {
+    /// Virtual machine for executing programs
+    vm: VirtualMachine,
+}
+
+impl ProgramManager {
+    /// Create a new program manager
+    pub fn new(max_instructions: u64, gas_limit: u64) -> Self {
+        Self {
+            vm: VirtualMachine::new(max_instructions, gas_limit),
+        }
+    }
+
+    /// Execute a program
+    // pub fn execute_program(
+    //     &self,
+    //     program_id: Hash,
+    //     program_code: &[u8],
+    //     caller: PublicKey,
+    //     data: Vec<u8>,
+    //     state: &mut BlockchainState,
+    //     account_keys: &[PublicKey],
+    // ) -> Result<ExecutionResult> {
+    //     // Prepare accounts for the program to access
+    //     let mut accounts = HashMap::new();
+
+    //     let mut account_refs: Vec<(&PublicKey, &mut Account)> = account_keys
+    //         .iter()
+    //         .filter_map(|key| state.accounts.get_mut(key).map(|account| (key, account)))
+    //         .collect();
+    // TODO: Fix account modification
+    // for (key, account) in account_refs {
+    //     accounts.insert(key.clone(), account);
+    //     // Create execution context
+    //     let mut context = ExecutionContext {
+    //         program_id,
+    //         caller,
+    //         data,
+    //         accounts,
+    //     };
+
+    //     // Execute the program
+    //     self.vm.execute(program_code, &mut context)
+    // }
+    // }
+
+    /// Deploy a new program
+    pub fn deploy_program(
+        &self,
+        program_id: Hash,
+        program_code: Vec<u8>,
+        owner: PublicKey,
+        state: &mut BlockchainState,
+    ) -> Result<()> {
+        // Validate program code
+        if program_code.is_empty() {
+            return Err(anyhow!("Empty program code"));
+        }
+
+        // Store program in state
+        state.programs.insert(
+            program_id,
+            crate::blockchain::state::ProgramInfo {
+                code: program_code,
+                owner,
+                deployment_slot: state.current_slot + 1,
+            },
+        );
+
+        Ok(())
     }
 }

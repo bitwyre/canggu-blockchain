@@ -1,3 +1,16 @@
-[dependencies]
+[package]
+name = "merkle"
+version = "0.1.0"
+edition = "2021"
+authors = { workspace = true }
+repository = { workspace = true }
+homepage = { workspace = true }
+license = { workspace = true }
 
-merkle = { git = "github.com/mintlayer/merkletree-mintlayer"}
+[dependencies]
+sha2 = "0.10"
+serde = { version = "1.0", features = ["derive"] }
+
+[lib]
+name = "merkle"
+path = "src/lib.rs"

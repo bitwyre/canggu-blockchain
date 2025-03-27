@@ -1,12 +1,12 @@
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
+use ed25519_dalek::{Signature as Ed25519Signature, Verifier, VerifyingKey};
 use ed25519_dalek::{Signer, SigningKey};
-use ed25519_dalek::{ Signature as Ed25519Signature, Verifier, VerifyingKey};
 use rand::rngs::OsRng;
 use rand::CryptoRng;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
-use std::{fmt, fs};
 use std::path::Path;
+use std::{fmt, fs};
 
 /// A public key (Ed25519)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -28,7 +28,7 @@ impl Keypair {
     pub fn generate<R>(csprng: &mut R) -> Self
     where
         R: CryptoRng + RngCore,
-    {  
+    {
         Self(ed25519_dalek::SigningKey::generate(csprng))
     }
 
@@ -47,24 +47,30 @@ impl Keypair {
         }
         let secret_bytes: [u8; 32] = bytes[..ed25519_dalek::SECRET_KEY_LENGTH]
             .try_into()
-            .map_err(|_| ed25519_dalek::SignatureError::from_source(String::from("invalid secret key length")))?;
+            .map_err(|_| {
+                ed25519_dalek::SignatureError::from_source(String::from(
+                    "invalid secret key length",
+                ))
+            })?;
         let secret = ed25519_dalek::SigningKey::from_bytes(&secret_bytes);
-        let public: [u8; 32] = bytes[32..ed25519_dalek::PUBLIC_KEY_LENGTH].try_into().unwrap();
+        let public: [u8; 32] = bytes[32..ed25519_dalek::PUBLIC_KEY_LENGTH]
+            .try_into()
+            .unwrap();
         let public = VerifyingKey::from_bytes(&public).unwrap();
 
         let expected_public = secret.verifying_key();
 
-        (public == expected_public)
-            .then_some(Self(secret))
-            .ok_or(ed25519_dalek::SignatureError::from_source(String::from(
+        (public == expected_public).then_some(Self(secret)).ok_or(
+            ed25519_dalek::SignatureError::from_source(String::from(
                 "keypair bytes do not specify same pubkey as derived from their secret key",
-            )))
+            )),
+        )
     }
 
     /// Recovers a `Keypair` from a base58-encoded string
     pub fn from_base58_string(s: &str) -> Self {
         let mut buf = [0u8; ed25519_dalek::KEYPAIR_LENGTH];
-        bs58::decode(s).onto(&mut buf).unwrap();
+        bs58::decode(s).into_vec().unwrap();
         Self::from_bytes(&buf).unwrap()
     }
 
@@ -86,14 +92,14 @@ impl Keypair {
     pub fn save_to_file(&self, path: &Path) -> Result<()> {
         let keypair_bytes = bincode::serialize(&KeypairSerialized {
             public: self.public().to_bytes(),
-            secret: *self.0.as_bytes()
+            secret: *self.0.as_bytes(),
         })?;
 
         let json_bytes = serde_json::to_string(&keypair_bytes)?;
         fs::write(path, &json_bytes)?;
         Ok(())
     }
-    
+
     /// Load a keypair from a file
     pub fn load_from_file(path: &Path) -> Result<Self> {
         let keypair_bytes = fs::read(path)?;
@@ -112,12 +118,11 @@ impl Keypair {
 }
 
 impl Signer<Signature> for Keypair {
-    
     fn try_sign(&self, msg: &[u8]) -> Result<Signature, ed25519_dalek::ed25519::Error> {
         let signature = self.0.try_sign(msg)?;
         Ok(Signature(signature))
     }
-    
+
     fn sign(&self, msg: &[u8]) -> Signature {
         self.try_sign(msg).unwrap()
     }
@@ -184,11 +189,10 @@ impl fmt::Display for Signature {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::rngs::OsRng;                                                  
+    use rand::rngs::OsRng;
 
     #[test]
     fn test_keypair_roundtrip() {

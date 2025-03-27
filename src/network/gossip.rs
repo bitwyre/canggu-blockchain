@@ -5,18 +5,17 @@ use crate::network::peer::PeerManager;
 use crate::transaction::tx::Transaction;
 use libp2p::futures::StreamExt;
 use libp2p::{
-    NetworkBehaviour, PeerId, Transport,
     core::upgrade,
     gossipsub::{
-        Gossipsub, GossipsubConfig, GossipsubConfigBuilder, MessageAuthenticity, MessageId,
-        ValidationMode, error::GossipsubHandlerError,
+        error::GossipsubHandlerError, Gossipsub, GossipsubConfigBuilder, IdentTopic as Topic,
+        MessageAuthenticity, ValidationMode,
     },
     identity,
-    mdns::{Mdns, MdnsConfig, MdnsEvent},
+    mdns::{Mdns, MdnsConfig},
     noise,
-    swarm::{NetworkBehaviour, Swarm, SwarmBuilder},
-    tcp::{GenTcpConfig, TcpConfig},
-    yamux,
+    swarm::{Swarm, SwarmBuilder},
+    tcp::TcpConfig,
+    yamux, NetworkBehaviour, PeerId, Transport,
 };
 use log::{debug, error, info, warn};
 use std::collections::{HashMap, HashSet};
@@ -162,7 +161,7 @@ impl GossipService {
 
         // Subscribe to topics
         for topic in GossipTopic::all() {
-            let topic_id = libp2p::gossipsub::IdentTopic::new(topic.as_str());
+            let topic_id = Topic::new(topic.as_str());
             gossipsub.subscribe(&topic_id)?;
         }
 
@@ -284,7 +283,7 @@ impl GossipService {
                     seen.insert(tx_hash);
                 }
                 let topic = GossipTopic::Transactions.as_str();
-                let topic_id = libp2p::gossipsub::IdentTopic::new(topic);
+                let topic_id = Topic::new(topic);
                 let encoded = bincode::serialize(&message).unwrap_or_default();
                 if let Err(e) = swarm.behaviour_mut().gossipsub.publish(topic_id, encoded) {
                     error!("Failed to publish transaction: {}", e);
@@ -297,7 +296,7 @@ impl GossipService {
                     seen.insert(block_hash);
                 }
                 let topic = GossipTopic::Blocks.as_str();
-                let topic_id = libp2p::gossipsub::IdentTopic::new(topic);
+                let topic_id = Topic::new(topic);
                 let encoded = bincode::serialize(&message).unwrap_or_default();
                 if let Err(e) = swarm.behaviour_mut().gossipsub.publish(topic_id, encoded) {
                     error!("Failed to publish block: {}", e);

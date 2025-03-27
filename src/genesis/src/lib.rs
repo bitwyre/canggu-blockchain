@@ -1,1 +1,3 @@
-mod genesis;
+pub mod genesis;
+
+pub use genesis::GenesisConfig;
