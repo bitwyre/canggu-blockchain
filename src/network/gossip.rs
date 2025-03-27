@@ -1,7 +1,7 @@
 use crate::blockchain::block::Block;
 use crate::crypto::hash::{Hash, Hashable};
 use crate::network::message::Message;
-use crate::network::peer::PeerManager;
+use crate::network::peer::{self, PeerManager};
 use crate::transaction::tx::Transaction;
 use libp2p::futures::StreamExt;
 use libp2p::{
@@ -249,20 +249,115 @@ impl GossipService {
                 match behaviour_event {
                     NodeBehaviourEvent::Gossipsub(gossip_event) => {
                         // Handle gossipsub events
+                        println!("Gossipsub event: {:?}", gossip_event);
                     }
                     NodeBehaviourEvent::Mdns(mdns_event) => {
                         // Handle mdns events like peer discovery
+                        println!("MDNS event: {:?}", mdns_event);
                     }
                 }
             }
-            libp2p::swarm::SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+            libp2p::swarm::SwarmEvent::ConnectionEstablished {
+                peer_id,
+                endpoint,
+                num_established,
+                concurrent_dial_errors,
+            } => {
                 // New peer connected
+                println!("Connection established with peer: {}", peer_id);
+                println!("  Endpoint: {:?}", endpoint);
+                println!("  Total connections to this peer: {}", num_established);
+                if let Some(errors) = concurrent_dial_errors {
+                    println!("  Concurrent dial errors: {}", errors.len());
+                    for (addr, err) in errors {
+                        println!("    Address: {}, Error: {:?}", addr, err);
+                    }
+                }
             }
-            libp2p::swarm::SwarmEvent::ConnectionClosed { peer_id, .. } => {
+            libp2p::swarm::SwarmEvent::ConnectionClosed {
+                peer_id,
+                endpoint,
+                num_established,
+                cause,
+            } => {
                 // Peer disconnected
+                println!("Connection closed with peer: {}", peer_id);
+                println!("  Endpoint: {:?}", endpoint);
+                println!("  Remaining connections: {}", num_established);
+                if let Some(error) = cause {
+                    println!("  Cause: {:?}", error);
+                } else {
+                    println!("  Cause: Clean disconnect");
+                }
             }
-            _ => {
-                // Handle other events
+            libp2p::swarm::SwarmEvent::IncomingConnection {
+                local_addr,
+                send_back_addr,
+            } => {
+                println!("Incoming connection:");
+                println!("  Local address: {}", local_addr);
+                println!("  Remote address: {}", send_back_addr);
+            }
+            libp2p::swarm::SwarmEvent::IncomingConnectionError {
+                local_addr,
+                send_back_addr,
+                error,
+            } => {
+                println!("Incoming connection error:");
+                println!("  Local address: {}", local_addr);
+                println!("  Remote address: {}", send_back_addr);
+                println!("  Error: {:?}", error);
+            }
+            libp2p::swarm::SwarmEvent::OutgoingConnectionError { peer_id, error } => {
+                println!("Outgoing connection error:");
+                if let Some(id) = peer_id {
+                    println!("  Peer ID: {}", id);
+                } else {
+                    println!("  Peer ID: Unknown");
+                }
+                println!("  Error: {:?}", error);
+            }
+            libp2p::swarm::SwarmEvent::BannedPeer { peer_id, endpoint } => {
+                println!("Banned peer connection rejected:");
+                println!("  Peer ID: {}", peer_id);
+                println!("  Endpoint: {:?}", endpoint);
+            }
+            libp2p::swarm::SwarmEvent::NewListenAddr {
+                listener_id,
+                address,
+            } => {
+                println!("New listen address:");
+                println!("  Listener ID: {:?}", listener_id);
+                println!("  Address: {}", address);
+            }
+            libp2p::swarm::SwarmEvent::ExpiredListenAddr {
+                listener_id,
+                address,
+            } => {
+                println!("Expired listen address:");
+                println!("  Listener ID: {:?}", listener_id);
+                println!("  Address: {}", address);
+            }
+            libp2p::swarm::SwarmEvent::ListenerClosed {
+                listener_id,
+                addresses,
+                reason,
+            } => {
+                println!("Listener closed:");
+                println!("  Listener ID: {:?}", listener_id);
+                println!("  Addresses: {:?}", addresses);
+                match reason {
+                    Ok(_) => println!("  Reason: Graceful shutdown"),
+                    Err(e) => println!("  Reason: Error - {:?}", e),
+                }
+            }
+            libp2p::swarm::SwarmEvent::ListenerError { listener_id, error } => {
+                println!("Listener error:");
+                println!("  Listener ID: {:?}", listener_id);
+                println!("  Error: {:?}", error);
+            }
+            libp2p::swarm::SwarmEvent::Dialing(peer_id) => {
+                println!("Dialing peer: {}", peer_id);
             }
         }
     }
@@ -402,6 +497,26 @@ impl GossipService {
 
         // Add to known peers
         // In a real implementation, this would dial the peer
+        println!("Connected to node: {}", addr);
+
+        // Extract peer ID from the address if it contains one
+        let peer_id = match addr.iter().find_map(|p| match p {
+            libp2p::multiaddr::Protocol::P2p(hash) => {
+                Some(libp2p::PeerId::from_multihash(hash).expect("Valid hash"))
+            }
+            _ => None,
+        }) {
+            Some(peer_id) => {
+                info!("Extracted peer ID from address: {}", peer_id);
+                peer_id
+            }
+            None => {
+                return Err("Address does not contain peer ID component (e.g., /p2p/Qm...)".into());
+            }
+        };
+
+        // add peer here and broadcast it
+        // self.peer_manager.add_peer(peer_id);
 
         Ok(())
     }
