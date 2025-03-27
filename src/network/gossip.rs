@@ -516,7 +516,7 @@ impl GossipService {
         };
 
         // add peer here and broadcast it
-        // self.peer_manager.add_peer(peer_id);
+        self.peer_manager.add_peer(peer_id);
 
         Ok(())
     }

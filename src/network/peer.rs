@@ -35,7 +35,7 @@ pub struct PeerManager {
     local_id: PeerId,
 
     /// Connected peers
-    peers: HashMap<PeerId, PeerInfo>,
+    peers: Mutex<HashMap<PeerId, PeerInfo>>,
 
     /// Channel for outbound messages
     outbound_tx: mpsc::Sender<(PeerId, Message)>,
@@ -46,13 +46,13 @@ impl PeerManager {
     pub fn new(local_id: PeerId, outbound_tx: mpsc::Sender<(PeerId, Message)>) -> Self {
         Self {
             local_id,
-            peers: HashMap::new(),
+            peers: Mutex::new(HashMap::new()),
             outbound_tx,
         }
     }
 
     /// Add a new peer
-    pub fn add_peer(&mut self, peer_id: PeerId) {
+    pub fn add_peer(&self, peer_id: PeerId) {
         if peer_id == self.local_id {
             return; // Don't add ourselves
         }
@@ -67,21 +67,24 @@ impl PeerManager {
             last_seen: now,
         };
 
-        self.peers.insert(peer_id, info);
+        let mut peers = self.peers.lock().unwrap();
+        peers.insert(peer_id, info);
 
         info!("Added peer: {}", peer_id);
     }
 
     /// Remove a peer
-    pub fn remove_peer(&mut self, peer_id: &PeerId) {
-        if self.peers.remove(peer_id).is_some() {
+    pub fn remove_peer(&self, peer_id: &PeerId) {
+        let mut peers = self.peers.lock().unwrap();
+        if peers.remove(peer_id).is_some() {
             info!("Removed peer: {}", peer_id);
         }
     }
 
     /// Update peer information
-    pub fn update_peer(&mut self, peer_id: &PeerId, height: Option<u64>, version: Option<String>) {
-        if let Some(info) = self.peers.get_mut(peer_id) {
+    pub fn update_peer(&self, peer_id: &PeerId, height: Option<u64>, version: Option<String>) {
+        let mut peers = self.peers.lock().unwrap();
+        if let Some(info) = peers.get_mut(peer_id) {
             if let Some(h) = height {
                 info.height = Some(h);
             }
@@ -95,30 +98,35 @@ impl PeerManager {
     }
 
     /// Mark peer as seen
-    pub fn mark_peer_seen(&mut self, peer_id: &PeerId) {
-        if let Some(info) = self.peers.get_mut(peer_id) {
+    pub fn mark_peer_seen(&self, peer_id: &PeerId) {
+        let mut peers = self.peers.lock().unwrap();
+        if let Some(info) = peers.get_mut(peer_id) {
             info.last_seen = Instant::now();
         }
     }
 
     /// Get information about a peer
-    pub fn get_peer(&self, peer_id: &PeerId) -> Option<&PeerInfo> {
-        self.peers.get(peer_id)
+    pub fn get_peer(&self, peer_id: &PeerId) -> Option<PeerInfo> {
+        let peers = self.peers.lock().unwrap();
+        peers.get(peer_id).cloned()
     }
 
     /// Get all connected peers
     pub fn get_all_peers(&self) -> Vec<PeerInfo> {
-        self.peers.values().cloned().collect()
+        let peers = self.peers.lock().unwrap();
+        peers.values().cloned().collect()
     }
 
     /// Get the number of connected peers
     pub fn peer_count(&self) -> usize {
-        self.peers.len()
+        let peers = self.peers.lock().unwrap();
+        peers.len()
     }
 
     /// Send a message to a specific peer
     pub async fn send_to_peer(&self, peer_id: PeerId, message: Message) {
-        if !self.peers.contains_key(&peer_id) {
+        let peers = self.peers.lock().unwrap();
+        if !peers.contains_key(&peer_id) {
             warn!("Attempted to send message to unknown peer: {}", peer_id);
             return;
         }
@@ -130,16 +138,17 @@ impl PeerManager {
 
     /// Broadcast a message to all peers
     pub async fn broadcast(&self, message: Message) {
-        for peer_id in self.peers.keys() {
+        let peers = self.peers.lock().unwrap();
+        for peer_id in peers.keys() {
             let _ = self.outbound_tx.send((*peer_id, message.clone())).await;
         }
     }
 
     /// Clean up inactive peers
-    pub fn cleanup_inactive_peers(&mut self, timeout: Duration) {
+    pub fn cleanup_inactive_peers(&self, timeout: Duration) {
+        let peers = self.peers.lock().unwrap();
         let now = Instant::now();
-        let to_remove: Vec<PeerId> = self
-            .peers
+        let to_remove: Vec<PeerId> = peers
             .iter()
             .filter(|(_, info)| now.duration_since(info.last_seen) > timeout)
             .map(|(id, _)| *id)
