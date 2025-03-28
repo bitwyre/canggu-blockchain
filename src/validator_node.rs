@@ -1,4 +1,4 @@
-use crate::blockchain::block::{Block, create_genesis_block};
+use crate::blockchain::block::{create_genesis_block, Block};
 use crate::blockchain::state::BlockchainState;
 use crate::blockchain::storage::BlockchainStorage;
 use crate::config::Config;
@@ -14,7 +14,8 @@ use crate::runtime::program::ProgramRegistry;
 use crate::transaction::pool::TransactionPool;
 use crate::transaction::tx::Transaction;
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
+use libp2p::PeerId;
 use log::{debug, error, info, warn};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
@@ -142,6 +143,7 @@ impl Node {
         let (message_tx, mut message_rx) = mpsc::channel(100);
 
         // Initialize gossip service
+
         let listen_addr = format!("/ip4/0.0.0.0/tcp/{}", self.config.p2p_port);
         let gossip_service =
             GossipService::new(&listen_addr, self.config.max_peers, message_tx.clone())

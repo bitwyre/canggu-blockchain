@@ -19,6 +19,7 @@ use libp2p::{
 };
 use log::{debug, error, info, warn};
 use std::collections::{HashMap, HashSet};
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -145,8 +146,9 @@ impl GossipService {
         let gossipsub_config = GossipsubConfigBuilder::default()
             .validation_mode(ValidationMode::Strict)
             .heartbeat_interval(Duration::from_secs(10))
-            .mesh_n(6)
-            .mesh_n_low(4)
+            .mesh_outbound_min(1)
+            .mesh_n(2)
+            .mesh_n_low(1)
             .mesh_n_high(12)
             .gossip_lazy(3)
             .history_length(5)
@@ -450,6 +452,10 @@ impl GossipService {
         }
 
         // Broadcast to all peers
+        println!(
+            "Broadcasting to peers: {:?}",
+            self.peer_manager.get_all_peers()
+        );
         self.peer_manager.broadcast(Message::Block(block)).await;
     }
 
@@ -501,9 +507,10 @@ impl GossipService {
 
         // Extract peer ID from the address if it contains one
         let peer_id = match addr.iter().find_map(|p| match p {
-            libp2p::multiaddr::Protocol::P2p(hash) => {
-                Some(libp2p::PeerId::from_multihash(hash).expect("Valid hash"))
+            libp2p::multiaddr::Protocol::Ip4(_) => {
+                Some(libp2p::PeerId::try_from_multiaddr(&addr).expect("Valid hash"))
             }
+
             _ => None,
         }) {
             Some(peer_id) => {
