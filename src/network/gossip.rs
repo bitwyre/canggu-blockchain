@@ -4,6 +4,8 @@ use crate::network::message::Message;
 use crate::network::peer::{self, PeerManager};
 use crate::transaction::tx::Transaction;
 use libp2p::futures::StreamExt;
+use libp2p::identity::ed25519::Keypair;
+use libp2p::Multiaddr;
 use libp2p::{
     core::upgrade,
     gossipsub::{
@@ -188,7 +190,7 @@ impl GossipService {
         let seen_blocks = Arc::new(Mutex::new(HashSet::new()));
 
         let seen_txs_clone = seen_txs.clone();
-        let seen_blocks_clone = seen_blocks.clone();
+        let seen_blocks_clone: Arc<Mutex<HashSet<Hash>>> = seen_blocks.clone();
 
         tokio::spawn(async move {
             let mut outbound_rx_recv = outbound_rx;
@@ -269,6 +271,7 @@ impl GossipService {
                 println!("Connection established with peer: {}", peer_id);
                 println!("  Endpoint: {:?}", endpoint);
                 println!("  Total connections to this peer: {}", num_established);
+
                 if let Some(errors) = concurrent_dial_errors {
                     println!("  Concurrent dial errors: {}", errors.len());
                     for (addr, err) in errors {
@@ -367,12 +370,15 @@ impl GossipService {
     /// Handle an outbound message
     async fn handle_outbound_message(
         swarm: &mut Swarm<NodeBehaviour>,
-        _peer_id: PeerId, // Unused for now
+        peer_id: PeerId, // Unused for now
         message: Message,
         seen_txs: &Arc<Mutex<HashSet<Hash>>>,
         seen_blocks: &Arc<Mutex<HashSet<Hash>>>,
     ) {
         match &message {
+            Message::Dial(x) => {
+                swarm.dial(x.parse::<Multiaddr>().unwrap());
+            }
             Message::Transaction(tx) => {
                 let tx_hash = tx.hash();
                 {
@@ -395,6 +401,17 @@ impl GossipService {
                 let topic = GossipTopic::Blocks.as_str();
                 let topic_id = Topic::new(topic);
                 let encoded = bincode::serialize(&message).unwrap_or_default();
+
+                println!(
+                    "Is connected to Peer {} ---> {}",
+                    peer_id,
+                    swarm.is_connected(&peer_id)
+                );
+
+                for peer in swarm.connected_peers() {
+                    println!("Connected to peer: {}", peer);
+                }
+
                 if let Err(e) = swarm.behaviour_mut().gossipsub.publish(topic_id, encoded) {
                     error!("Failed to publish block: {}", e);
                 }
@@ -523,7 +540,7 @@ impl GossipService {
         };
 
         // add peer here and broadcast it
-        self.peer_manager.add_peer(peer_id);
+        self.peer_manager.add_peer(peer_id, addr);
 
         Ok(())
     }

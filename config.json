@@ -5,7 +5,7 @@
   "max_peers": 50,
   "block_time_target": 400,
   "seed_nodes": [
-    "/ip4/192.168.50.142/tcp/8900/p2p/12D3KooWN55WmCSxNRG1S9qhzL4vYKSpbS3YozCsK87JUy3WdxkJ"
+    "/ip4/192.168.50.142/tcp/8900/p2p/12D3KooWHbHyXR9NstZ43cyHPaSfvsCPnBUqx5hQDtaQN9Nk3q7S"
   ],
   "max_transaction_size": 10240,
   "max_transactions_per_block": 1000

@@ -1,5 +1,6 @@
 use crate::crypto::hash::Hash;
 use crate::network::message::Message;
+use libp2p::swarm::handler::multi;
 use libp2p::{Multiaddr, PeerId};
 use log::{debug, info, warn};
 use std::collections::HashMap;
@@ -52,7 +53,7 @@ impl PeerManager {
     }
 
     /// Add a new peer
-    pub fn add_peer(&self, peer_id: PeerId) {
+    pub fn add_peer(&self, peer_id: PeerId, multiaddr: Multiaddr) {
         if peer_id == self.local_id {
             return; // Don't add ourselves
         }
@@ -69,6 +70,8 @@ impl PeerManager {
 
         let mut peers = self.peers.lock().unwrap();
         peers.insert(peer_id, info);
+        self.outbound_tx
+            .try_send((peer_id, Message::Dial(multiaddr.to_string())));
 
         info!("Added peer: {}", peer_id);
     }

@@ -1,12 +1,16 @@
 use crate::blockchain::block::Block;
 use crate::crypto::hash::{Hash, Hashable};
 use crate::transaction::tx::Transaction;
+use libp2p::multihash::Multihash;
+use libp2p::PeerId;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Network message types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Message {
+    Dial(String),
+
     /// Ping message to check if peer is alive
     Ping {
         /// Nonce to identify the ping
@@ -79,6 +83,7 @@ pub fn decode_message(bytes: &[u8]) -> Result<Message, bincode::Error> {
 impl fmt::Display for Message {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Message::Dial(multiaddr) => write!(f, "Dial({})", multiaddr),
             Message::Ping { nonce } => write!(f, "Ping({})", nonce),
             Message::Pong { nonce } => write!(f, "Pong({})", nonce),
             Message::Transaction(tx) => write!(f, "Transaction(hash={})", tx.hash()),
