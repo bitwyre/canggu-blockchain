@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+
+use sha3::{
+    digest::{ExtendableOutput, Update, XofReader},
+    Shake256,
+};
 use std::fmt;
 
 /// A 32-byte SHA-256 hash
@@ -14,12 +18,13 @@ impl Hash {
 
     /// Hash the given data
     pub fn hash(data: &[u8]) -> Self {
-        let mut hasher = Sha256::new();
+        let mut hasher = Shake256::default();
         hasher.update(data);
-        let result = hasher.finalize();
+
+        let mut reader = hasher.finalize_xof();
 
         let mut bytes = [0u8; 32];
-        bytes.copy_from_slice(&result);
+        reader.read(&mut bytes);
 
         Self(bytes)
     }
